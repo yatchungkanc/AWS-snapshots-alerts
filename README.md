@@ -35,7 +35,7 @@ The application is built using AWS Lambda and is deployed using Terraform. It le
 - `cleanup.sh`: Script for cleaning up resources.
 - `setup.sh`: Script for setting up the project structure.
 - `terraform/`: Directory containing Terraform configuration files for infrastructure provisioning.
-- `test_snapshot_inventory.py`: Unit tests for the snapshot inventory functionality.
+- `test_snapshot_inventory.py`: Test suite for verifying the deployment of the Lambda function, S3 bucket, and SNS topic. It includes tests for Lambda function configuration, S3 bucket configuration, IAM role permissions, SNS topic configuration, Lambda function invocation, and deployment rollback capability.
 
 ## Usage Instructions
 
