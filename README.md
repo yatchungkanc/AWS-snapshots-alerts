@@ -45,6 +45,7 @@ Prerequisites:
 - AWS CLI (version 2.0 or later)
 - Terraform (version 1.0 or later)
 - Python 3.8 or later
+- go-aws-sso (for AWS Single Sign-On authentication)
 
 Steps:
 1. Clone the repository:
@@ -70,6 +71,11 @@ To deploy the application:
 1. Configure your AWS credentials:
    ```
    aws configure
+   ```
+   
+   If using AWS SSO, use go-aws-sso to authenticate:
+   ```
+   go-aws-sso login
    ```
 
 2. Run the deployment script:
@@ -137,6 +143,19 @@ The AWS Snapshot Inventory Generator processes data through the following steps:
 ```
 
 Note: Ensure that the Lambda function has appropriate permissions to access the required AWS services and resources.
+
+## Source Code Generation
+
+The source code for this project was initially generated using Amazon Q, an AI-powered assistant for software development. However, it's important to note that the generated code has undergone human review and modifications to ensure its quality, security, and alignment with specific project requirements.
+
+While Amazon Q provided a strong foundation for the project structure and core functionality, human expertise was applied to:
+- Refine and optimize the code
+- Ensure best practices and coding standards are followed
+- Implement additional features and customizations
+- Verify and enhance security measures
+- Adapt the code to specific use cases and requirements
+
+This combination of AI-generated code and human expertise allows for rapid development while maintaining high-quality, tailored solutions.
 
 ## Infrastructure
 
