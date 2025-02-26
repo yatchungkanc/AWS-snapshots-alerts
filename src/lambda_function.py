@@ -1,3 +1,5 @@
+# Description: Lambda function to generate a snapshot inventory and send a summary via SNS
+
 import boto3
 import csv
 import io
@@ -97,6 +99,9 @@ class SnapshotInventory:
         return snapshots
 
     def generate_summary(self, snapshots: List[Dict[str, Any]]) -> str:
+        # Sort snapshots by age in descending order
+        snapshots.sort(key=lambda x: x['Age'], reverse=True)
+
         summary = {
             'total_count': len(snapshots),
             'by_type': {},
