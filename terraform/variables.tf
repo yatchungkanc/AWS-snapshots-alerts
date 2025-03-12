@@ -15,6 +15,11 @@ variable "bucket_name" {
   type        = string
 }
 
+variable "product" {
+  description = "Product name (e.g., Opsbank2)"
+  type        = string
+}
+
 variable "notification_email" {
   description = "Email address for SNS notifications"
   type        = string

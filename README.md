@@ -66,6 +66,20 @@ Steps:
 
 ### Deployment
 
+Before deploying the application, you must configure the required variables in `terraform/terraform.tfvars`:
+
+```hcl
+aws_region         = "us-east-1"          # AWS region for deployment
+environment        = "nonprod"            # Environment name (nonprod or prod)
+bucket_name        = "XXXXXXXXXXXXXXXXXX" # Unique S3 bucket name
+product           = "Opsbank2"  # Product name for resource tagging
+notification_email = "admin@example.com"  # Email for receiving notifications
+tags = {
+  Project   = "Snapshot-Inventory"
+  ManagedBy = "Terraform"
+}
+```
+
 To deploy the application:
 
 1. Configure your AWS credentials:
