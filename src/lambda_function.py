@@ -98,50 +98,108 @@ class SnapshotInventory:
 
         return snapshots
 
-    def generate_summary(self, snapshots: List[Dict[str, Any]]) -> str:
-        # Sort snapshots by age in descending order
-        snapshots.sort(key=lambda x: x['Age'], reverse=True)
+    def get_unattached_volumes(self) -> List[Dict[str, Any]]:
+        """Get all unattached EBS volumes and their idle time"""
+        unattached_volumes = []
+        
+        try:
+            paginator = self.ec2_client.get_paginator('describe_volumes')
+            for page in paginator.paginate():
+                for volume in page['Volumes']:
+                    # Check if volume has no attachments
+                    if not volume['Attachments']:
+                        # Calculate days since last attachment using State.Transition time if available
+                        idle_days = 0
+                        if 'StateTransitionTime' in volume:
+                            idle_days = self.get_snapshot_age(volume['StateTransitionTime'])
+                        
+                        unattached_volumes.append({
+                            'VolumeId': volume['VolumeId'],
+                            'Size': volume['Size'],
+                            'State': volume['State'],
+                            'IdleDays': idle_days,
+                            'VolumeType': volume['VolumeType'],
+                            'CreateTime': volume['CreateTime'].isoformat()
+                        })
+        except Exception as e:
+            print(f"Error getting unattached volumes: {str(e)}")
+        
+        # Sort by idle days in descending order
+        unattached_volumes.sort(key=lambda x: x['IdleDays'], reverse=True)
+        return unattached_volumes
 
+
+    def generate_summary(self, snapshots: List[Dict[str, Any]]) -> str:
+        # Get unattached volumes
+        unattached_volumes = self.get_unattached_volumes()
+        
+        # Calculate summary statistics
         summary = {
             'total_count': len(snapshots),
             'by_type': {},
             'by_age_group': {}
         }
-
+        
+        # Calculate breakdown by type
         for snapshot in snapshots:
-            # Count by type
-            if snapshot['Type'] not in summary['by_type']:
-                summary['by_type'][snapshot['Type']] = {'count': 0, 'size': 0}
-            summary['by_type'][snapshot['Type']]['count'] += 1
-            summary['by_type'][snapshot['Type']]['size'] += snapshot['Size']
-
-            # Count by age group
-            if snapshot['AgeGroup'] not in summary['by_age_group']:
-                summary['by_age_group'][snapshot['AgeGroup']] = {'count': 0, 'size': 0}
-            summary['by_age_group'][snapshot['AgeGroup']]['count'] += 1
-            summary['by_age_group'][snapshot['AgeGroup']]['size'] += snapshot['Size']
-
-        # Format summary as email content
+            stype = snapshot['Type']
+            if stype not in summary['by_type']:
+                summary['by_type'][stype] = {'count': 0, 'size': 0}
+            summary['by_type'][stype]['count'] += 1
+            summary['by_type'][stype]['size'] += snapshot['Size']
+        
+        # Calculate breakdown by age group
+        for snapshot in snapshots:
+            age_group = snapshot['AgeGroup']
+            if age_group not in summary['by_age_group']:
+                summary['by_age_group'][age_group] = {'count': 0, 'size': 0}
+            summary['by_age_group'][age_group]['count'] += 1
+            summary['by_age_group'][age_group]['size'] += snapshot['Size']
+        
+        # Generate email content
         email_content = f"""Snapshot Inventory Summary for Account {self.account_id}
-Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+    Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
-Total Snapshots: {summary['total_count']}
+    Total Snapshots: {summary['total_count']}
 
-Breakdown by Type:
-{'-' * 40}"""
+    Breakdown by Type:
+    {'-' * 40}"""
 
         for stype, data in summary['by_type'].items():
             email_content += f"\n{stype}: {data['count']} snapshots, {data['size']:.2f} GB"
 
         email_content += f"""
 
-Breakdown by Age:
-{'-' * 40}"""
+    Breakdown by Age:
+    {'-' * 40}"""
 
         for age_group, data in summary['by_age_group'].items():
             email_content += f"\n{age_group}: {data['count']} snapshots, {data['size']:.2f} GB"
 
+        # Add unattached volumes section
+        email_content += f"""
+
+    Unattached EBS Volumes Summary:
+    {'-' * 40}
+    Total Unattached Volumes: {len(unattached_volumes)}
+    """
+        
+        if unattached_volumes:
+            total_size = sum(vol['Size'] for vol in unattached_volumes)
+            email_content += f"Total Size: {total_size} GB\n\nTop Idle Volumes (by days unattached):\n"
+            
+            # List top 10 longest idle volumes
+            for vol in unattached_volumes[:10]:
+                email_content += (f"\nVolume ID: {vol['VolumeId']}\n"
+                                f"  - Idle Days: {vol['IdleDays']}\n"
+                                f"  - Size: {vol['Size']} GB\n"
+                                f"  - Type: {vol['VolumeType']}\n"
+                                f"  - State: {vol['State']}")
+        else:
+            email_content += "\nNo unattached volumes found."
+
         return email_content
+
 
 def lambda_handler(event, context):
     inventory = SnapshotInventory()
@@ -149,6 +207,9 @@ def lambda_handler(event, context):
     # Get all snapshots
     snapshots = inventory.get_all_snapshots()
     
+    # Get unattached volumes
+    unattached_volumes = inventory.get_unattached_volumes()
+
     # Generate CSV file
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     csv_filename = f'snapshot_inventory_{inventory.account_id}_{timestamp}.csv'
@@ -167,15 +228,33 @@ def lambda_handler(event, context):
         Body=csv_buffer.getvalue()
     )
     
+    # Unattached volumes CSV
+    volumes_csv_filename = f'unattached_volumes_{inventory.account_id}_{timestamp}.csv'
+    volumes_csv_buffer = io.StringIO()
+    volumes_writer = csv.DictWriter(volumes_csv_buffer,
+                                  fieldnames=['VolumeId', 'Size', 'State', 'IdleDays', 
+                                            'VolumeType', 'CreateTime'])
+    volumes_writer.writeheader()
+    volumes_writer.writerows(unattached_volumes)
+    
+    # Upload volumes CSV to S3
+    inventory.s3_client.put_object(
+        Bucket=inventory.s3_bucket,
+        Key=volumes_csv_filename,
+        Body=volumes_csv_buffer.getvalue()
+    )
+
     # Generate summary and send email
     summary = inventory.generate_summary(snapshots)
     
-    # Create SNS message with S3 link
+    # Create SNS message with S3 links
     message = {
         'default': summary,
-        'email': summary + f"\n\nDetailed report available in S3: s3://{inventory.s3_bucket}/{csv_filename}"
+        'email': summary + f"\n\nDetailed reports available in S3:\n" +
+                f"Snapshots: s3://{inventory.s3_bucket}/{csv_filename}\n" +
+                f"Unattached Volumes: s3://{inventory.s3_bucket}/{volumes_csv_filename}"
     }
-    
+
     # Publish to SNS
     inventory.sns_client.publish(
         TopicArn=inventory.sns_topic_arn,

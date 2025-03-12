@@ -29,6 +29,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
         Effect = "Allow"
         Action = [
           "ec2:DescribeSnapshots",
+          "ec2:DescribeVolumes", 
           "rds:DescribeDBSnapshots",
           "backup:ListBackupJobs",
           "backup:DescribeBackupJob",

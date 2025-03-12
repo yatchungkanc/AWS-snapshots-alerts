@@ -1,0 +1,31 @@
+digraph INFRA {
+  node [ color = "black", fillcolor = "#E6E6E6", height =1, style = "filled,bold,rounded", fontname = "Arial" ];
+  "snapshot-inventory-lambda" [ label = "snapshot-inventory-lambda
+(AWS::Lambda::Function)", shape =rectangle, fillcolor = "#B7E0FF" ];
+  "snapshot-inventory-s3-bucket" [ label = "snapshot-inventory-s3-bucket
+(AWS::S3::Bucket)", shape =cylinder, fillcolor = "#FFF5CD" ];
+  "snapshot-inventory-sns-topic" [ label = "snapshot-inventory-sns-topic
+(AWS::SNS::Topic)", shape =rectangle, fillcolor = "#CCE0AC" ];
+  "snapshot-inventory-lambda-role" [ label = "snapshot-inventory-lambda-role
+(AWS::IAM::Role)", shape =rectangle ];
+  "snapshot-inventory-lambda-policy" [ label = "snapshot-inventory-lambda-policy
+(AWS::IAM::Policy)", shape =rectangle ];
+  "snapshot-inventory-eventbridge-rule" [ label = "snapshot-inventory-eventbridge-rule
+(AWS::Events::Rule)", shape =rectangle, fillcolor = "#CCE0AC" ];
+  "snapshot-inventory-eventbridge-target" [ label = "snapshot-inventory-eventbridge-target
+(AWS::Events::Target)", shape =rectangle, fillcolor = "#CCE0AC" ];
+  "snapshot-inventory-lambda-permission" [ label = "snapshot-inventory-lambda-permission
+(AWS::Lambda::Permission)", shape =rectangle ];
+  "snapshot-inventory-sns-subscription" [ label = "snapshot-inventory-sns-subscription
+(AWS::SNS::Subscription)", shape =rectangle, fillcolor = "#CCE0AC" ];
+  "snapshot-inventory-lambda" -> "snapshot-inventory-s3-bucket";
+  "snapshot-inventory-lambda" -> "snapshot-inventory-sns-topic";
+  "snapshot-inventory-lambda" -> "snapshot-inventory-lambda-role";
+  "snapshot-inventory-lambda-policy" -> "snapshot-inventory-lambda-role";
+  "snapshot-inventory-eventbridge-rule" -> "snapshot-inventory-lambda";
+  "snapshot-inventory-eventbridge-target" -> "snapshot-inventory-eventbridge-rule";
+  "snapshot-inventory-eventbridge-target" -> "snapshot-inventory-lambda";
+  "snapshot-inventory-lambda-permission" -> "snapshot-inventory-lambda";
+  "snapshot-inventory-lambda-permission" -> "snapshot-inventory-eventbridge-rule";
+  "snapshot-inventory-sns-subscription" -> "snapshot-inventory-sns-topic";
+}
