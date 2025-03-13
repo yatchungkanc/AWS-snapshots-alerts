@@ -54,12 +54,7 @@ Steps:
    cd aws-snapshot-inventory-generator
    ```
 
-2. Run the setup script:
-   ```
-   ./setup.sh
-   ```
-
-3. Install Python dependencies:
+2. Install Python dependencies:
    ```
    pip install -r requirements-lambda.txt
    ```
