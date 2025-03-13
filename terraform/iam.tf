@@ -28,13 +28,28 @@ resource "aws_iam_role_policy" "lambda_policy" {
       {
         Effect = "Allow"
         Action = [
+          # EC2 Permissions
+          "ec2:DescribeRegions",
           "ec2:DescribeSnapshots",
-          "ec2:DescribeVolumes", 
+          "ec2:DescribeVolumes",
+          
+          # RDS Permissions
           "rds:DescribeDBSnapshots",
+          "rds:DescribeDBInstances",
+          "rds:DescribeDBClusters",
+          "rds:DescribeDBClusterSnapshots",
+          
+          # AWS Backup Permissions
           "backup:ListBackupJobs",
           "backup:DescribeBackupJob",
+          "backup:ListBackupVaults",
+          "backup:ListRecoveryPointsByBackupVault",
+          
+          # S3 and SNS Permissions
           "s3:PutObject",
           "sns:Publish",
+          
+          # CloudWatch Logs Permissions
           "logs:CreateLogGroup",
           "logs:CreateLogStream",
           "logs:PutLogEvents"

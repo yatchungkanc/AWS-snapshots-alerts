@@ -128,7 +128,6 @@ class SnapshotInventory:
         unattached_volumes.sort(key=lambda x: x['IdleDays'], reverse=True)
         return unattached_volumes
 
-
     def generate_summary(self, snapshots: List[Dict[str, Any]]) -> str:
         # Get unattached volumes
         unattached_volumes = self.get_unattached_volumes()
@@ -136,79 +135,245 @@ class SnapshotInventory:
         # Calculate summary statistics
         summary = {
             'total_count': len(snapshots),
+            'by_region': {},
             'by_type': {},
             'by_age_group': {}
         }
         
-        # Calculate breakdown by type
+        # Calculate breakdown by region and type
         for snapshot in snapshots:
+            region = snapshot.get('Region', 'unknown')
             stype = snapshot['Type']
+            
+            # Initialize region if not exists
+            if region not in summary['by_region']:
+                summary['by_region'][region] = {
+                    'count': 0,
+                    'size': 0,
+                    'by_type': {}
+                }
+            
+            # Update region totals
+            summary['by_region'][region]['count'] += 1
+            summary['by_region'][region]['size'] += snapshot['Size']
+            
+            # Update region type breakdown
+            if stype not in summary['by_region'][region]['by_type']:
+                summary['by_region'][region]['by_type'][stype] = {
+                    'count': 0, 'size': 0
+                }
+            summary['by_region'][region]['by_type'][stype]['count'] += 1
+            summary['by_region'][region]['by_type'][stype]['size'] += snapshot['Size']
+            
+            # Update global type totals
             if stype not in summary['by_type']:
                 summary['by_type'][stype] = {'count': 0, 'size': 0}
             summary['by_type'][stype]['count'] += 1
             summary['by_type'][stype]['size'] += snapshot['Size']
-        
-        # Calculate breakdown by age group
-        for snapshot in snapshots:
+            
+            # Update age group totals
             age_group = snapshot['AgeGroup']
             if age_group not in summary['by_age_group']:
                 summary['by_age_group'][age_group] = {'count': 0, 'size': 0}
             summary['by_age_group'][age_group]['count'] += 1
             summary['by_age_group'][age_group]['size'] += snapshot['Size']
-        
+
         # Generate email content
         email_content = f"""Snapshot Inventory Summary for Account {self.account_id}
     Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
     Total Snapshots: {summary['total_count']}
 
-    Breakdown by Type:
+    Regional Breakdown:
     {'-' * 40}"""
 
+        # Add regional breakdown
+        for region, data in summary['by_region'].items():
+            email_content += f"\n\nRegion: {region}"
+            email_content += f"\nTotal: {data['count']} snapshots, {data['size']:.2f} GB"
+            email_content += "\nBy Type:"
+            for stype, type_data in data['by_type'].items():
+                email_content += f"\n  - {stype}: {type_data['count']} snapshots, {type_data['size']:.2f} GB"
+
+        email_content += f"\n\nGlobal Breakdown by Type:\n{'-' * 40}"
         for stype, data in summary['by_type'].items():
             email_content += f"\n{stype}: {data['count']} snapshots, {data['size']:.2f} GB"
 
-        email_content += f"""
-
-    Breakdown by Age:
-    {'-' * 40}"""
-
+        email_content += f"\n\nBreakdown by Age:\n{'-' * 40}"
         for age_group, data in summary['by_age_group'].items():
             email_content += f"\n{age_group}: {data['count']} snapshots, {data['size']:.2f} GB"
 
-        # Add unattached volumes section
-        email_content += f"""
-
-    Unattached EBS Volumes Summary:
-    {'-' * 40}
-    Total Unattached Volumes: {len(unattached_volumes)}
-    """
+        # Add unattached volumes section with regional breakdown
+        email_content += f"\n\nUnattached EBS Volumes Summary:\n{'-' * 40}"
+        email_content += f"\nTotal Unattached Volumes: {len(unattached_volumes)}"
         
         if unattached_volumes:
-            total_size = sum(vol['Size'] for vol in unattached_volumes)
-            email_content += f"Total Size: {total_size} GB\n\nTop Idle Volumes (by days unattached):\n"
-            
-            # List top 10 longest idle volumes
-            for vol in unattached_volumes[:10]:
-                email_content += (f"\nVolume ID: {vol['VolumeId']}\n"
-                                f"  - Idle Days: {vol['IdleDays']}\n"
-                                f"  - Size: {vol['Size']} GB\n"
-                                f"  - Type: {vol['VolumeType']}\n"
-                                f"  - State: {vol['State']}")
+            # Group volumes by region
+            volumes_by_region = {}
+            for vol in unattached_volumes:
+                region = vol.get('Region', 'unknown')
+                if region not in volumes_by_region:
+                    volumes_by_region[region] = []
+                volumes_by_region[region].append(vol)
+
+            # Display volumes by region
+            for region, volumes in volumes_by_region.items():
+                total_size = sum(vol['Size'] for vol in volumes)
+                email_content += f"\n\nRegion: {region}"
+                email_content += f"\nVolumes: {len(volumes)}, Total Size: {total_size} GB"
+                email_content += "\nTop Idle Volumes (by days unattached):"
+                
+                # List top 5 longest idle volumes per region
+                for vol in sorted(volumes, key=lambda x: x['IdleDays'], reverse=True)[:5]:
+                    email_content += (f"\nVolume ID: {vol['VolumeId']}\n"
+                                    f"  - Idle Days: {vol['IdleDays']}\n"
+                                    f"  - Size: {vol['Size']} GB\n"
+                                    f"  - Type: {vol['VolumeType']}\n"
+                                    f"  - State: {vol['State']}")
         else:
             email_content += "\nNo unattached volumes found."
 
         return email_content
 
 
+    def get_all_regions(self) -> List[str]:
+        """Get list of all AWS regions"""
+        try:
+            regions = [region['RegionName'] 
+                      for region in self.ec2_client.describe_regions()['Regions']]
+            return regions
+        except Exception as e:
+            print(f"Error getting regions: {str(e)}")
+            return []
+
+    def get_snapshots_for_region(self, region: str) -> List[Dict[str, Any]]:
+        """Get snapshots from a specific region"""
+        snapshots = []
+        
+        # Create regional clients
+        ec2_regional = boto3.client('ec2', region_name=region)
+        rds_regional = boto3.client('rds', region_name=region)
+        backup_regional = boto3.client('backup', region_name=region)
+        
+        # Get EBS snapshots
+        try:
+            paginator = ec2_regional.get_paginator('describe_snapshots')
+            for page in paginator.paginate(OwnerIds=[self.account_id]):
+                for snapshot in page['Snapshots']:
+                    age = self.get_snapshot_age(snapshot['StartTime'])
+                    snapshots.append({
+                        'Id': snapshot['SnapshotId'],
+                        'Type': 'EBS',
+                        'Region': region,
+                        'StartTime': snapshot['StartTime'].isoformat(),
+                        'Size': snapshot['VolumeSize'],
+                        'Age': age,
+                        'AgeGroup': self.get_age_group(age)
+                    })
+        except Exception as e:
+            print(f"Error getting EBS snapshots in {region}: {str(e)}")
+
+        # Get RDS snapshots
+        try:
+            paginator = rds_regional.get_paginator('describe_db_snapshots')
+            for page in paginator.paginate():
+                for snapshot in page['DBSnapshots']:
+                    age = self.get_snapshot_age(snapshot['SnapshotCreateTime'])
+                    snapshots.append({
+                        'Id': snapshot['DBSnapshotIdentifier'],
+                        'Type': 'RDS',
+                        'Region': region,
+                        'StartTime': snapshot['SnapshotCreateTime'].isoformat(),
+                        'Size': snapshot['AllocatedStorage'],
+                        'Age': age,
+                        'AgeGroup': self.get_age_group(age)
+                    })
+        except Exception as e:
+            print(f"Error getting RDS snapshots in {region}: {str(e)}")
+
+        # Get EFS backups using AWS Backup
+        try:
+            paginator = backup_regional.get_paginator('list_backup_jobs')
+            for page in paginator.paginate(ByResourceType='EFS'):
+                for backup in page['BackupJobs']:
+                    if backup['State'] == 'COMPLETED':
+                        age = self.get_snapshot_age(backup['CreationDate'])
+                        size_gb = backup.get('BackupSizeInBytes', 0) / (1024 * 1024 * 1024)
+                        snapshots.append({
+                            'Id': backup['BackupJobId'],
+                            'Type': 'EFS',
+                            'Region': region,
+                            'StartTime': backup['CreationDate'].isoformat(),
+                            'Size': round(size_gb, 2),
+                            'Age': age,
+                            'AgeGroup': self.get_age_group(age)
+                        })
+        except Exception as e:
+            print(f"Error getting EFS backups in {region}: {str(e)}")
+
+        return snapshots
+
+    def get_all_regions_snapshots(self) -> List[Dict[str, Any]]:
+        """Get snapshots from all regions"""
+        all_snapshots = []
+        regions = self.get_all_regions()
+        
+        for region in regions:
+            print(f"Processing region: {region}")
+            region_snapshots = self.get_snapshots_for_region(region)
+            all_snapshots.extend(region_snapshots)
+            
+        return all_snapshots
+
+    def get_unattached_volumes_for_region(self, region: str) -> List[Dict[str, Any]]:
+        """Get unattached volumes for a specific region"""
+        unattached_volumes = []
+        
+        try:
+            ec2_regional = boto3.client('ec2', region_name=region)
+            paginator = ec2_regional.get_paginator('describe_volumes')
+            for page in paginator.paginate():
+                for volume in page['Volumes']:
+                    if not volume['Attachments']:
+                        idle_days = 0
+                        if 'StateTransitionTime' in volume:
+                            idle_days = self.get_snapshot_age(volume['StateTransitionTime'])
+                        
+                        unattached_volumes.append({
+                            'VolumeId': volume['VolumeId'],
+                            'Region': region,
+                            'Size': volume['Size'],
+                            'State': volume['State'],
+                            'IdleDays': idle_days,
+                            'VolumeType': volume['VolumeType'],
+                            'CreateTime': volume['CreateTime'].isoformat()
+                        })
+        except Exception as e:
+            print(f"Error getting unattached volumes in {region}: {str(e)}")
+            
+        return unattached_volumes
+
+    def get_all_regions_unattached_volumes(self) -> List[Dict[str, Any]]:
+        """Get unattached volumes from all regions"""
+        all_unattached_volumes = []
+        regions = self.get_all_regions()
+        
+        for region in regions:
+            print(f"Processing unattached volumes in region: {region}")
+            region_volumes = self.get_unattached_volumes_for_region(region)
+            all_unattached_volumes.extend(region_volumes)
+            
+        all_unattached_volumes.sort(key=lambda x: x['IdleDays'], reverse=True)
+        return all_unattached_volumes
+
 def lambda_handler(event, context):
     inventory = SnapshotInventory()
     
-    # Get all snapshots
-    snapshots = inventory.get_all_snapshots()
+    # Get snapshots from all regions
+    snapshots = inventory.get_all_regions_snapshots()
     
-    # Get unattached volumes
-    unattached_volumes = inventory.get_unattached_volumes()
+    # Get unattached volumes from all regions
+    unattached_volumes = inventory.get_all_regions_unattached_volumes()
 
     # Generate CSV file
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -217,7 +382,8 @@ def lambda_handler(event, context):
     # Create CSV in memory
     csv_buffer = io.StringIO()
     writer = csv.DictWriter(csv_buffer, 
-                          fieldnames=['Id', 'Type', 'StartTime', 'Size', 'Age', 'AgeGroup'])
+                          fieldnames=['Id', 'Type', 'Region', 'StartTime', 
+                                    'Size', 'Age', 'AgeGroup'])
     writer.writeheader()
     writer.writerows(snapshots)
     
@@ -232,8 +398,8 @@ def lambda_handler(event, context):
     volumes_csv_filename = f'unattached_volumes_{inventory.account_id}_{timestamp}.csv'
     volumes_csv_buffer = io.StringIO()
     volumes_writer = csv.DictWriter(volumes_csv_buffer,
-                                  fieldnames=['VolumeId', 'Size', 'State', 'IdleDays', 
-                                            'VolumeType', 'CreateTime'])
+                                  fieldnames=['VolumeId', 'Region', 'Size', 'State', 
+                                            'IdleDays', 'VolumeType', 'CreateTime'])
     volumes_writer.writeheader()
     volumes_writer.writerows(unattached_volumes)
     
