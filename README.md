@@ -13,7 +13,6 @@ The application is built using AWS Lambda and is deployed using Terraform. It le
 ├── cleanup.sh
 ├── deploy.sh
 ├── requirements-lambda.txt
-├── setup.sh
 ├── src
 │   └── lambda_function.py
 ├── terraform
@@ -33,7 +32,6 @@ The application is built using AWS Lambda and is deployed using Terraform. It le
 - `src/lambda_function.py`: The main Lambda function that generates the snapshot inventory.
 - `deploy.sh`: Script for deploying the application.
 - `cleanup.sh`: Script for cleaning up resources.
-- `setup.sh`: Script for setting up the project structure.
 - `terraform/`: Directory containing Terraform configuration files for infrastructure provisioning.
 - `test_snapshot_inventory.py`: Test suite for verifying the deployment of the Lambda function, S3 bucket, and SNS topic. It includes tests for Lambda function configuration, S3 bucket configuration, IAM role permissions, SNS topic configuration, Lambda function invocation, and deployment rollback capability.
 
@@ -89,12 +87,16 @@ To deploy the application:
 
 2. Run the deployment script:
    ```
-   ./deploy.sh -e nonprod -f
+   ./deploy.sh -e nonprod -f  //full deployment to a nonprod environment
+   ```
+   ```
+   ./deploy.sh -e nonprod -l  //update lambda only in the nonprod environment
    ```
 
    Options:
    - `-e, --environment`: Specify the environment (nonprod or prod)
    - `-f, --full`: Perform a full deployment
+   - `-l, --lambda`: Perform an update to the lambda function only. Leaaving infrastructure untouched
 
 ### Configuration
 
