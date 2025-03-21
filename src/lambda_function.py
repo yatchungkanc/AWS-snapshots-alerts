@@ -16,11 +16,12 @@ class SnapshotInventory:
         self.backup_client = boto3.client('backup')  # Add AWS Backup client
         self.s3_client = boto3.client('s3')
         self.sns_client = boto3.client('sns')
-        
+        self.account_id = boto3.client('sts').get_caller_identity()['Account']
+               
         # Get environment variables
         self.s3_bucket = os.environ['S3_BUCKET_NAME']
         self.sns_topic_arn = os.environ['SNS_TOPIC_ARN']
-        self.account_id = boto3.client('sts').get_caller_identity()['Account']
+        self.email_subject = os.environ.get('EMAIL_SUBJECT', 'AWS Snapshot Inventory Report')  # Default title if not set
         
     def get_snapshot_age(self, start_time) -> int:
         """Calculate snapshot age in days"""
@@ -368,6 +369,10 @@ class SnapshotInventory:
 
 def lambda_handler(event, context):
     inventory = SnapshotInventory()
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    # Create email subject with account ID and timestamp
+    email_subject = f"{inventory.email_subject} - Account {inventory.account_id} - {timestamp}"
     
     # Get snapshots from all regions
     snapshots = inventory.get_all_regions_snapshots()
@@ -425,7 +430,8 @@ def lambda_handler(event, context):
     inventory.sns_client.publish(
         TopicArn=inventory.sns_topic_arn,
         Message=json.dumps(message),
-        MessageStructure='json'
+        MessageStructure='json',
+        Subject=email_subject
     )
     
     return {
