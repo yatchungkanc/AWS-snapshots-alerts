@@ -142,6 +142,8 @@ class SnapshotInventory:
         }
         
         # Calculate breakdown by region and type
+        # Sort snapshots by age in descending order
+        snapshots.sort(key=lambda x: x['Age'], reverse=True)
         for snapshot in snapshots:
             region = snapshot.get('Region', 'unknown')
             stype = snapshot['Type']
