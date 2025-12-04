@@ -7,7 +7,7 @@ resource "aws_s3_bucket" "snapshot_inventory" {
 resource "aws_s3_bucket_versioning" "snapshot_inventory" {
   bucket = aws_s3_bucket.snapshot_inventory.id
   versioning_configuration {
-    status = "Enabled"
+    status = "Disabled"
   }
 }
 
@@ -19,7 +19,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "snapshot_inventory" {
     status = "Enabled"
 
     expiration {
-      days = 90
+      days = 30
     }
   }
 }
